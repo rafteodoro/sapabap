@@ -1,0 +1,230 @@
+*&---------------------------------------------------------------------*
+*& Report  ZFIR001_13RT
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+REPORT ZFIR001_13RT.
+
+
+
+CLASS lcl_event_receiver DEFINITION DEFERRED.
+
+TABLES: BKPF, BSEG.
+
+TYPES: BEGIN OF ty_bkpf,
+  bukrs TYPE bkpf-BUKRS,
+  belnr TYPE bkpf-BELNR,
+  gjahr TYPE bkpf-gjahr,
+  blart TYPE bkpf-blart,
+  bldat TYPE bkpf-bldat,
+  budat TYPE bkpf-budat,
+  monat TYPE bkpf-monat,
+  cpudt TYPE bkpf-cpudt,
+  cputm TYPE bkpf-cputm,
+  aedat TYPE bkpf-aedat,
+  upddt TYPE bkpf-upddt,
+  wwert TYPE bkpf-wwert,
+  usnam TYPE bkpf-usnam,
+  tcode TYPE bkpf-tcode,
+  bvorg TYPE bkpf-bvorg,
+  xblnr TYPE bkpf-xblnr,
+  dbblg TYPE bkpf-dbblg,
+  stblg TYPE bkpf-stblg,
+  stjah TYPE bkpf-stjah,
+  bktxt TYPE bkpf-bktxt,
+  END OF ty_bkpf.
+
+  TYPES: BEGIN OF ty_bseg,
+    bukrs TYPE bseg-BUKRS,
+    belnr TYPE bseg-BELNR,
+    gjahr TYPE bseg-gjahr,
+    buzei TYPE bseg-buzei,
+    buzid TYPE bseg-buzid,
+    augdt TYPE bseg-augdt,
+    augcp TYPE bseg-augcp,
+    augbl TYPE bseg-augbl,
+    bschl TYPE bseg-bschl,
+    koart TYPE bseg-koart,
+    umskz TYPE bseg-umskz,
+    zumsk TYPE bseg-zumsk,
+    shkzg TYPE bseg-shkzg,
+    gsber TYPE bseg-gsber,
+    pargb TYPE bseg-pargb,
+    mwskz TYPE bseg-mwskz,
+    qsskz TYPE bseg-qsskz,
+  END OF ty_bseg.
+
+  DATA: lt_bkpf TYPE STANDARD TABLE OF ty_bkpf,
+        ls_bkpf TYPE ty_bkpf,
+        lt_bseg TYPE STANDARD TABLE OF ty_bseg,
+        ls_bseg TYPE ty_bseg.
+
+  DATA: go_grid_1 TYPE REF TO cl_gui_alv_grid,
+        go_grid_2 TYPE REF TO cl_gui_alv_grid,
+        go_cont_1 TYPE REF TO cl_gui_custom_container,
+        go_cont_2 TYPE REF TO cl_gui_custom_container,
+        go_event_receiver TYPE REF TO lcl_event_receiver.
+
+  SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-002.
+    SELECT-OPTIONS: so_belnr FOR bkpf-belnr,
+                    so_bukrs FOR bkpf-BUKRS OBLIGATORY,
+                    so_gjahr FOR bkpf-GJAHR OBLIGATORY.
+    SELECTION-SCREEN END OF BLOCK b1.
+
+START-OF-SELECTION.
+
+CALL SCREEN 0100.
+
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_GRID
+*&---------------------------------------------------------------------*
+*       CREATE TWO CONTAINERS & THEIR CORRESPONDING GRIDS
+*----------------------------------------------------------------------*
+FORM create_grid.
+
+  CREATE OBJECT go_cont_1   "CONTAINER 1
+    EXPORTING
+      container_name = 'CUST_CONT_1'.
+
+  CREATE OBJECT go_grid_1   "GRID 1
+    EXPORTING
+      i_parent = go_cont_1.
+
+  CREATE OBJECT go_cont_2   "CONTAINER 2
+    EXPORTING
+      container_name = 'CUST_CONT_2'.
+
+  CREATE OBJECT go_grid_2   "GRID 2
+    EXPORTING
+      i_parent = go_cont_2.
+
+ENDFORM.                    " CREATE_GRID
+
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_GRID
+*&---------------------------------------------------------------------*
+*       DISPLAY GRID 1 - LEFT GRID
+*----------------------------------------------------------------------*
+FORM display_grid1 .
+  CALL METHOD go_grid_1->set_table_for_first_display
+    EXPORTING
+
+      i_structure_name              = 'BKPF'
+    CHANGING
+      IT_OUTTAB                          = LT_BKPF
+    EXCEPTIONS
+      invalid_parameter_combination = 1
+      program_error                 = 2
+      too_many_lines                = 3
+      OTHERS                        = 4.
+ENDFORM.                    " DISPLAY_GRID
+
+*&---------------------------------------------------------------------*
+*&      Form  DISPLAY_GRID
+*&---------------------------------------------------------------------*
+*       DISPLAY GRID 2 - RIGHT GRID
+*----------------------------------------------------------------------*
+FORM display_grid2 .
+  CALL METHOD go_grid_2->set_table_for_first_display
+    EXPORTING
+      i_structure_name              = 'BSEG'
+    CHANGING
+      IT_OUTTAB                          = LT_BSEG
+    EXCEPTIONS
+      invalid_parameter_combination = 1
+      program_error                 = 2
+      too_many_lines                = 3
+      OTHERS                        = 4.
+ENDFORM.                    " DISPLAY_GRID
+*&---------------------------------------------------------------------*
+*&      Form  GET_DATA
+*&---------------------------------------------------------------------*
+*       FETCH DATA FROM THE HEADER TABLE 'EKKO'
+*----------------------------------------------------------------------*
+FORM get_data_bkpf .
+  SELECT bukrs
+       belnr
+       gjahr
+       blart
+       bldat
+       budat
+       monat
+       cpudt
+       cputm
+       aedat
+       upddt
+       wwert
+       usnam
+       tcode
+       bvorg
+       xblnr
+       dbblg
+       stblg
+       stjah
+       bktxt
+
+  FROM bkpf INTO TABLE lt_bkpf
+  WHERE belnr IN so_belnr AND bukrs IN so_bukrs AND gjahr IN so_gjahr.
+
+  IF sy-SUBRC <> 0.
+    MESSAGE 'Nenhum dado encontrado' TYPE 'E'.
+  ENDIF.
+ENDFORM.                    " GET_DATA
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_event_receiver DEFINITION
+*----------------------------------------------------------------------*
+*       CLASS DEFINITION FOR HANDLING THE ALV EVENT - DOUBLE CLICK
+*----------------------------------------------------------------------*
+CLASS lcl_event_receiver DEFINITION.
+  PUBLIC SECTION.
+    METHODS:
+    handle_double_click
+    FOR EVENT double_click OF cl_gui_alv_grid
+    IMPORTING e_row
+    e_column.
+ENDCLASS.                    "lcl_event_receiver DEFINITION
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_event_receiver IMPLEMENTATION
+*----------------------------------------------------------------------*
+*       CLASS IMPLEMENTATION FOR HANDLING THE ALV EVENT - DOUBLE CLICK
+*----------------------------------------------------------------------*
+CLASS lcl_event_receiver IMPLEMENTATION.
+  METHOD handle_double_click.
+
+*   FETCHING THE PARTICULAR RECORD THAT HAS BEEN SELECTED IN THE ALV
+    READ TABLE lt_bkpf INTO ls_bkpf INDEX e_row-index.
+    IF sy-subrc EQ 0.
+      SELECT bukrs
+             belnr
+             gjahr
+             buzei
+             buzid
+             augdt
+             augcp
+             augbl
+             bschl
+             koart
+             umskz
+             zumsk
+             shkzg
+             gsber
+             pargb
+             mwskz
+             qsskz
+        FROM BSEG
+        INTO TABLE LT_BSEG
+        WHERE belnr = ls_bkpf-belnr AND bukrs = ls_bkpf-bukrs AND gjahr = ls_bkpf-gjahr.
+
+      IF sy-subrc EQ 0.
+        PERFORM display_grid2.
+      ENDIF.
+    ENDIF.
+  ENDMETHOD.                    "handle_double_click
+ENDCLASS.
+
+  INCLUDE zfir001_13rt_status_0100o01.
+  INCLUDE zfir001_13rt_user_command_0i01.              "lcl_event_receiver IMPLEMENTATION
