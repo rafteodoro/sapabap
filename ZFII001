@@ -1,0 +1,116 @@
+*&---------------------------------------------------------------------*
+*& Report  ZFII001_13RT
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+REPORT ZFII001_13RT.
+
+TABLES: BKPF, BSEG.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-002.
+  SELECT-OPTIONS: so_belnr FOR bkpf-belnr,
+                  so_bukrs FOR bkpf-BUKRS OBLIGATORY,
+                  so_gjahr FOR bkpf-GJAHR OBLIGATORY.
+
+  PARAMETERS: filename TYPE STRING DEFAULT 'C:\temp'.
+SELECTION-SCREEN END OF BLOCK b1.
+
+DATA: lt_bkpf TYPE TABLE OF bkpf,
+      ls_bkpf TYPE bkpf,
+      lt_bseg TYPE TABLE OF bseg,
+      ls_bseg TYPE bseg,
+      lv_path TYPE STRING,
+      lv_fullpath TYPE STRING,
+      lv_useraction TYPE I,
+      lv_file TYPE STRING,
+      lt_file TYPE TABLE OF STRING,
+      lv_value TYPE STRING,
+      lv_value2 TYPE STRING,
+      iv_qtd_itens TYPE i,
+      iv_valor_total TYPE p DECIMALS 2.
+
+START-OF-SELECTION.
+
+SELECT bukrs belnr gjahr cpudt waers FROM bkpf INTO CORRESPONDING FIELDS OF TABLE lt_bkpf
+  WHERE bukrs IN so_bukrs AND belnr IN so_belnr AND gjahr IN so_gjahr.
+
+IF sy-subrc = 0.
+  SELECT bukrs belnr gjahr buzei saknr bschl shkzg wrbtr FROM bseg INTO CORRESPONDING FIELDS OF TABLE lt_bseg
+    WHERE bukrs IN so_bukrs AND belnr IN so_belnr AND gjahr IN so_gjahr.
+ELSE.
+  MESSAGE 'Nenhuma informação encontrada.' TYPE 'E'.
+ENDIF.
+
+SORT: lt_bkpf BY bukrs belnr gjahr,
+      lt_bseg BY bukrs belnr gjahr buzei.
+
+LOOP AT lt_bkpf INTO ls_bkpf.
+
+  lv_file = 'Header'.
+  APPEND lv_file TO lt_file.
+
+  CONCATENATE ls_bkpf-bukrs ls_bkpf-gjahr ls_bkpf-belnr ls_bkpf-cpudt ls_bkpf-waers INTO lv_file SEPARATED BY ';'.
+  APPEND lv_file TO lt_file.
+
+  lv_file = 'Item'.
+  APPEND lv_file to lt_file.
+
+  LOOP AT lt_bseg INTO ls_bseg WHERE bukrs = ls_bkpf-bukrs AND belnr = ls_bkpf-belnr AND gjahr = ls_bkpf-gjahr.
+    CLEAR lv_value.
+    lv_value = '' && ls_bseg-wrbtr.
+    CONCATENATE ls_bseg-buzei ls_bseg-saknr ls_bseg-bschl ls_bseg-shkzg lv_value INTO lv_file SEPARATED BY ';'.
+    APPEND lv_file to lt_file.
+
+    IF ls_bseg-shkzg = 'H'.
+      iv_qtd_itens = iv_qtd_itens + 1.
+      iv_valor_total = iv_valor_total + ls_bseg-wrbtr.
+    ENDIF.
+  ENDLOOP.
+
+  IF iv_qtd_itens <> 0.
+    CLEAR lv_value.
+    CLEAR lv_value2.
+    lv_value = '' && iv_qtd_itens.
+    lv_value2 = '' && iv_valor_total.
+    iv_qtd_itens = 0.
+    iv_valor_total = 0.
+    lv_file = 'Trailer'.
+    APPEND lv_file TO lt_file.
+    CONCATENATE lv_value lv_value2 INTO lv_file SEPARATED BY ';'.
+    APPEND lv_file to lt_file.
+  ENDIF.
+ENDLOOP.
+
+CALL METHOD cl_gui_frontend_services=>file_save_dialog
+EXPORTING
+  default_file_name    = filename
+  default_extension    = 'TXT'
+CHANGING
+  filename             = filename
+  path                 = lv_path
+  fullpath             = lv_fullpath
+  user_action          = lv_useraction
+EXCEPTIONS
+  cntl_error           = 1
+  error_no_gui         = 2
+  not_supported_by_gui = 3
+  OTHERS               = 4.
+
+* Check if the user clicked OK
+IF lv_useraction <> 0.
+  EXIT.
+ENDIF.
+
+CALL FUNCTION 'GUI_DOWNLOAD'
+  EXPORTING
+    FILENAME                        = filename
+  TABLES
+    DATA_TAB                        = lt_file
+          .
+IF SY-SUBRC <> 0.
+  MESSAGE 'Erro na gracação do arquivo.' TYPE 'E'.
+ELSE.
+  MESSAGE 'Arquivo gerado com sucesso.' TYPE 'I'.
+ENDIF.
