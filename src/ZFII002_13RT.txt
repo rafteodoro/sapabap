@@ -1,0 +1,192 @@
+*&---------------------------------------------------------------------*
+*& Report  ZFII002_13RT
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+REPORT ZFII002_13RT.
+"TABLES: BNKA.
+TYPE-POOLS: slis.
+
+TYPES:
+
+  BEGIN OF ty_banco,
+    banks TYPE bnka-banks,
+    bankl TYPE bnka-bankl,
+    banka TYPE bnka-banka,
+    provz TYPE bnka-provz,
+    status TYPE STRING,
+  END OF ty_banco.
+
+DATA: it_banco TYPE TABLE OF ty_banco,
+      is_banco LIKE LINE OF it_banco,
+      iv_end LIKE  BAPI1011_ADDRESS,
+      iv_retorno LIKE BAPIRET2.
+
+DATA: gt_filetable TYPE filetable,
+      gs_filetable TYPE file_table,
+      gv_return TYPE i.
+
+DATA: gv_filename TYPE STRING,
+      gt_line TYPE TABLE OF STRING,
+      gv_data TYPE STRING,
+      gs_line TYPE STRING,
+      iv_banco(3) TYPE c,
+      iv_var TYPE i.
+
+DATA: lt_fieldcat TYPE slis_t_fieldcat_alv,
+      ls_fieldcat TYPE slis_fieldcat_alv,
+      v_repid LIKE sy-repid,
+      v_tabix LIKE sy-tabix.
+
+PARAMETERS: p_fname TYPE char128 OBLIGATORY.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_fname.
+
+  CALL METHOD CL_GUI_FRONTEND_SERVICES=>FILE_OPEN_DIALOG
+    CHANGING
+      FILE_TABLE              = gt_filetable
+      RC                      = gv_return
+          .
+  IF SY-SUBRC <> 0.
+*   Implement suitable error handling here
+  ENDIF.
+
+  READ TABLE gt_filetable INTO gs_filetable INDEX 1.
+  p_fname = gs_filetable.
+
+  START-OF-SELECTION.
+  gv_filename = p_fname.
+
+  CALL METHOD CL_GUI_FRONTEND_SERVICES=>GUI_UPLOAD
+    EXPORTING
+      FILENAME                = gv_filename
+    CHANGING
+      DATA_TAB                = gt_line
+      .
+  IF SY-SUBRC <> 0.
+*   Implement suitable error handling here
+  ENDIF.
+
+
+LOOP AT gt_line INTO gs_line.
+  iv_banco = gs_line(3).
+  IF iv_banco = 'BRA'.
+    is_banco-banks = 'BR'.
+  ELSEIF iv_banco = 'USA'.
+    is_banco-banks = 'US'.
+  ELSEIF iv_banco = 'ESP'.
+    is_banco-banks = 'ES'.
+  ELSE.
+*    MESSAGE 'O código do país não é válido.' TYPE 'I'.
+  ENDIF.
+
+  is_banco-bankl = gs_line+3(7).
+  is_banco-banka = gs_line+10(25).
+  iv_var = strlen( gs_line ) - 2.
+  is_banco-provz = gs_line+iv_var(2).
+  iv_end-bank_name = is_banco-banka.
+  iv_end-region = is_banco-provz.
+
+  CALL FUNCTION 'BAPI_BANK_CREATE'
+  EXPORTING
+    BANK_CTRY                          = is_banco-banks
+    BANK_KEY                           = is_banco-bankl
+    BANK_ADDRESS                       = iv_end
+ IMPORTING
+   RETURN                             = iv_retorno.
+.
+
+  IF iv_retorno-message IS INITIAL.
+    is_banco-status = 'Banco criado com sucesso.'.
+  ELSE.
+    is_banco-status = iv_retorno-message.
+  ENDIF.
+  APPEND is_banco TO it_banco.
+  CLEAR is_banco.
+ENDLOOP.
+
+CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+.
+
+CLEAR ls_fieldcat.
+ls_fieldcat-col_pos = 1.
+ls_fieldcat-fieldname = 'BANKS'.
+ls_fieldcat-tabname = 'IT_BANCO'.
+ls_fieldcat-seltext_m = 'País'.
+ls_fieldcat-key = 'X'.
+APPEND ls_fieldcat TO lt_fieldcat.
+
+CLEAR ls_fieldcat.
+ls_fieldcat-col_pos = 2.
+ls_fieldcat-fieldname = 'BANKL'.
+ls_fieldcat-tabname = 'IT_BANCO'.
+ls_fieldcat-seltext_m = 'Código'.
+ls_fieldcat-key = 'X'.
+APPEND ls_fieldcat TO lt_fieldcat.
+
+CLEAR ls_fieldcat.
+ls_fieldcat-col_pos = 3.
+ls_fieldcat-fieldname = 'BANKA'.
+ls_fieldcat-tabname = 'IT_BANCO'.
+ls_fieldcat-seltext_m = 'Descrição'.
+APPEND ls_fieldcat TO lt_fieldcat.
+
+CLEAR ls_fieldcat.
+ls_fieldcat-col_pos = 4.
+ls_fieldcat-fieldname = 'PROVZ'.
+ls_fieldcat-tabname = 'IT_BANCO'.
+ls_fieldcat-seltext_m = 'Estado'.
+APPEND ls_fieldcat TO lt_fieldcat.
+
+CLEAR ls_fieldcat.
+ls_fieldcat-col_pos = 5.
+ls_fieldcat-fieldname = 'STATUS'.
+ls_fieldcat-tabname = 'IT_BANCO'.
+ls_fieldcat-seltext_m = 'Status'.
+APPEND ls_fieldcat TO lt_fieldcat.
+
+CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+EXPORTING
+i_callback_program = sy-repid
+it_fieldcat = lt_fieldcat
+i_callback_user_command = 'HANDLE_USER_COMMAND'
+TABLES
+t_outtab = it_banco
+EXCEPTIONS
+program_error = 1
+OTHERS = 2.
+
+IF sy-subrc <> 0.
+* Implement suitable error handling here
+ENDIF.
+
+*&———————————————————————*
+*& Form HANDLE_USER_COMMAND
+*&———————————————————————*
+* Handle user command from ALV report
+*———————————————————————-*
+FORM handle_user_command USING r_ucomm LIKE sy-ucomm
+rs_selfield TYPE slis_selfield.
+
+DATA: lv_message TYPE c LENGTH 100.
+     CASE r_ucomm.
+     WHEN '&IC1'. "Double-click command
+* Handling when user double click on field.
+      IF rs_selfield-fieldname = 'BANKL'.
+
+        READ TABLE it_banco INTO is_banco INDEX rs_selfield-tabindex.
+        SET PARAMETER ID 'BKL' FIELD is_banco-banks.
+        SET PARAMETER ID 'BNK' FIELD rs_selfield-value.
+        CALL TRANSACTION 'FI03' WITH AUTHORITY-CHECK
+                                  AND SKIP FIRST SCREEN.
+
+      ELSEIF rs_selfield-fieldname = 'STATUS'.
+        CLEAR lv_message.
+        CONCATENATE 'Status:' rs_selfield-value INTO lv_message SEPARATED BY ' '.
+        MESSAGE lv_message TYPE 'I'.
+      ENDIF.
+     ENDCASE.
+
+ENDFORM. "HANDLE_USER_COMMAND

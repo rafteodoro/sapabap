@@ -1,0 +1,110 @@
+*&---------------------------------------------------------------------*
+*& Report  ZMMR002_13RT
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+REPORT ZMMR002_13RT.
+
+TABLES: EKKO,EKPO,LFA1.
+
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-002.
+  SELECT-OPTIONS: so_ebeln FOR ekko-EBELN OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK b1.
+
+TYPES: BEGIN OF ty_ekko,
+  ebeln TYPE ekko-ebeln,
+  bedat TYPE ekko-bedat,
+  lifnr TYPE ekko-lifnr,
+  name1 TYPE lfa1-name1,
+  iv_total_po TYPE ekpo-netpr,
+  perce TYPE p DECIMALS 2,
+  END OF ty_ekko.
+
+TYPES: BEGIN OF ty_ekpo,
+  ebeln TYPE ekpo-ebeln,
+  ebelp TYPE ekpo-ebelp,
+  txz01 TYPE ekpo-txz01,
+  menge TYPE ekpo-menge,
+  meins TYPE ekpo-meins,
+  netpr TYPE ekpo-netpr,
+  END OF ty_ekpo.
+
+DATA: lt_ekko TYPE STANDARD TABLE OF ty_ekko,
+      lt_ekpo TYPE STANDARD TABLE OF ty_ekpo,
+      ls_ekko TYPE ty_ekko,
+      ls_ekpo TYPE ty_ekpo,
+      iv_forn TYPE STRING,
+      iv_total TYPE ekpo-netpr.
+
+START-OF-SELECTION.
+
+SELECT ebeln bedat a~lifnr name1 APPENDING CORRESPONDING FIELDS OF TABLE lt_ekko
+FROM EKKO AS a
+INNER JOIN LFA1 AS b
+ON a~lifnr = b~lifnr
+WHERE a~ebeln IN so_ebeln.
+
+IF sy-subrc <> 0.
+  MESSAGE 'Nenhum registro retornado.' TYPE 'E'.
+ELSE.
+  SELECT ebeln ebelp txz01 menge meins netpr FROM EKPO INTO CORRESPONDING FIELDS OF TABLE lt_ekpo
+  WHERE ebeln IN so_ebeln.
+ENDIF.
+
+SORT: lt_ekko BY ebeln,
+      lt_ekpo BY ebeln ebelp.
+
+CLEAR iv_total.
+LOOP AT lt_ekko INTO ls_ekko.
+  CLEAR ls_ekko-iv_total_po.
+  LOOP AT lt_ekpo INTO ls_ekpo WHERE ebeln = ls_ekko-ebeln.
+    ls_ekko-iv_total_po = ls_ekko-iv_total_po + ( ls_ekpo-netpr * ls_ekpo-menge ).
+  ENDLOOP.
+  iv_total = iv_total + ls_ekko-iv_total_po.
+ENDLOOP.
+
+LOOP AT lt_ekko INTO ls_ekko.
+  CLEAR ls_ekko-iv_total_po.
+
+  NEW-LINE.
+  WRITE:  1 ls_ekko-ebeln COLOR COL_KEY,
+         13 ls_ekko-bedat COLOR COL_KEY,
+         24  '            ' COLOR COL_KEY,
+         37 ls_ekko-name1 COLOR COL_KEY.
+  NEW-LINE.
+  LOOP AT lt_ekpo INTO ls_ekpo WHERE ebeln = ls_ekko-ebeln.
+    ls_ekko-iv_total_po = ls_ekko-iv_total_po + ( ls_ekpo-netpr * ls_ekpo-menge ).
+    WRITE:  50 ls_ekpo-ebelp,
+            56 ls_ekpo-txz01,
+            90 ls_ekpo-menge,
+           107 ls_ekpo-meins,
+           120 ls_ekpo-netpr.
+    NEW-LINE.
+  ENDLOOP.
+  ls_ekko-perce = ( ls_ekko-iv_total_po / iv_total ) * 100.
+
+  WRITE:  50 'Total Pedido:',
+          65  ls_ekko-iv_total_po COLOR COL_TOTAL,
+          84  '(',
+          85  ls_ekko-perce,
+          104 ')'.
+
+  ULINE.
+ENDLOOP.
+
+WRITE: 50 'Total Geral:',
+       65 iv_total.
+
+AT LINE-SELECTION.
+DATA: fld(30) type c,
+      val(30) type c.
+
+GET CURSOR FIELD fld VALUE val.
+
+IF fld = 'LS_EKKO-EBELN'.
+  READ LINE SY-LILLI   FIELD VALUE ls_ekko-ebeln.
+  set parameter id 'BES' FIELD val.
+  CALL TRANSACTION 'ME22' AND SKIP FIRST SCREEN.
+ENDIF.

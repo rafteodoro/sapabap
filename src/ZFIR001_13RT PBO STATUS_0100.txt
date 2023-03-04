@@ -1,0 +1,19 @@
+*----------------------------------------------------------------------*
+***INCLUDE ZFIR001_13RT_STATUS_0100O01.
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Module  STATUS_0100  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE STATUS_0100 OUTPUT.
+*  SET PF-STATUS ‘STANDARD’ OF PROGRAM ‘SAPLSALV’.
+  SET PF-STATUS 'STATUS_0100'.
+  IF go_cont_1 IS INITIAL AND go_cont_2 IS INITIAL.
+    PERFORM get_data_bkpf.
+    PERFORM create_grid.
+    CREATE OBJECT go_event_receiver.
+    SET HANDLER go_event_receiver->handle_double_click FOR go_grid_1.
+    PERFORM display_grid1.
+  ENDIF.
+ENDMODULE.
